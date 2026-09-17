@@ -31,6 +31,13 @@ or:
 make TOOLCHAIN_PREFIX=x86_64-elf-
 ```
 
+The kernel is linked through the compiler driver, using its default linker for GCC and LLD for Clang. A different linker can be picked by adding a `-fuse-ld=` option to `LDFLAGS`.
+
+Link-time optimisation can be enabled by adding `-flto` to `CFLAGS`, for example:
+```
+make CFLAGS='-g -O2 -pipe -flto'
+```
+
 ### Makefile targets
 
 Running `make all` will compile the kernel (from the `kernel/` directory) and then generate a bootable ISO image.
