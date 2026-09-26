@@ -51,6 +51,14 @@ ifneq ($(filter-out clean distclean,$(or $(MAKECMDGOALS),default)),)
     endif
 endif
 
+# Stop on a problem the checks below find, unless only cleaning, which needs
+# no toolchain.
+ifneq ($(filter-out clean distclean,$(or $(MAKECMDGOALS),default)),)
+    override TOOLCHAIN_ERROR = $(error $(1))
+else
+    override TOOLCHAIN_ERROR =
+endif
+
 # Check if CC is Clang.
 override CC_IS_CLANG := $(shell ! $(CC) --version 2>/dev/null | grep -q '^Target: '; echo $$?)
 
@@ -74,7 +82,7 @@ override CC_HAS_LINK_FLAG = $(shell LC_ALL=C $(CC) $(CFLAGS) $(LDFLAGS) $(1) -Wl
 
 # Check if the linker supports a flag by searching its help, as older GNU
 # ld take unknown flags for different ones (-no-pie for -n -o -pie).
-override LD_HAS_FLAG = $(shell ! $(CC) $(CFLAGS) $(LDFLAGS) -Wl,--help 2>/dev/null | grep -qE '(^|[[:space:]])-?$(1)([[:space:],=[]|$$)'; echo $$?)
+override LD_HAS_FLAG = $(shell ! LC_ALL=C $(CC) $(CFLAGS) $(LDFLAGS) -Wl,--help 2>/dev/null | grep -qE '(^|[[:space:]])-?$(1)([[:space:],=[]|$$)'; echo $$?)
 
 # Internal C flags that should not be changed by the user.
 override CFLAGS += \
@@ -128,28 +136,31 @@ ifeq ($(CC_IS_CLANG),1)
         $(LDFLAGS)
 endif
 
+# Internal linker flags that should not be changed by the user.
+override LDFLAGS += \
+    -nostdlib \
+    -static \
+    -Wl,-z,max-page-size=0x1000 \
+    -Wl,-z,noexecstack \
+    -Wl,--gc-sections \
+    -Wl,-T,linker-scripts/x86_64.lds \
+    -Wl,-m,elf_x86_64
+
 # Check that the compiler works with the given flags, as the checks below
 # would otherwise blame a missing feature.
 override CC_COMPILE_ERROR := $(shell LC_ALL=C $(CC) $(CFLAGS) -c -x c /dev/null -o /dev/null 2>&1 >/dev/null | grep -i 'error:' | head -n 1)
 ifneq ($(CC_COMPILE_ERROR),)
-    $(error The compiler does not work with the given CFLAGS: $(CC_COMPILE_ERROR))
+    $(call TOOLCHAIN_ERROR,The compiler does not work with the given CFLAGS: $(CC_COMPILE_ERROR))
 endif
 
-ifeq ($(call CC_HAS_COMPILE_FLAG,-fno-stack-clash-protection),1)
-    override CFLAGS += \
-        -fno-stack-clash-protection
-endif
-
-# GCC needs this flag for interrupt handlers and Clang below 3.9 has no
-# name for it, where only a long double could reach the x87.
-ifeq ($(call CC_HAS_COMPILE_FLAG,-mno-80387),1)
-    override CFLAGS += \
-        -mno-80387
-endif
-
-ifeq ($(call CC_HAS_COMPILE_FLAG,-fcf-protection=none),1)
-    override CFLAGS += \
-        -fcf-protection=none
+# Check that the compiler emits ELF objects. Go by the macro for ELF targets,
+# as GNU as cannot write an object to standard output. Clang is given an ELF
+# target, and before version 17 did not define the macro for all of them.
+ifneq ($(CC_IS_CLANG),1)
+    override CC_EMITS_ELF := $(shell ! $(CC) $(CFLAGS) -dM -E -x c /dev/null 2>/dev/null | grep -q 'define __ELF__ 1'; echo $$?)
+    ifneq ($(CC_EMITS_ELF),1)
+        $(call TOOLCHAIN_ERROR,The compiler does not emit ELF objects)
+    endif
 endif
 
 ifeq ($(CC_IS_CLANG),1)
@@ -177,7 +188,7 @@ ifeq ($(CC_IS_CLANG),1)
         # Check that this worked, as the linker flags would otherwise
         # reach a compiler driver that knows nothing of them.
         ifeq ($(CC_LINKS_VIA_DRIVER),1)
-            $(error The compiler still hands the link over to another compiler driver)
+            $(call TOOLCHAIN_ERROR,The compiler still hands the link over to another compiler driver)
         endif
     endif
 endif
@@ -185,18 +196,25 @@ endif
 # The same for linking, once Clang has a linker it can run.
 override CC_LINK_ERROR := $(shell LC_ALL=C $(CC) $(CFLAGS) $(LDFLAGS) -Wl,--version 2>&1 >/dev/null | grep -i 'error:' | head -n 1)
 ifneq ($(CC_LINK_ERROR),)
-    $(error The linker does not work with the given LDFLAGS: $(CC_LINK_ERROR))
+    $(call TOOLCHAIN_ERROR,The linker does not work with the given LDFLAGS: $(CC_LINK_ERROR))
 endif
 
-# Internal linker flags that should not be changed by the user.
-override LDFLAGS += \
-    -Wl,-m,elf_x86_64 \
-    -nostdlib \
-    -static \
-    -Wl,-z,max-page-size=0x1000 \
-    -Wl,-z,noexecstack \
-    -Wl,--gc-sections \
-    -Wl,-T,linker-scripts/x86_64.lds
+ifeq ($(call CC_HAS_COMPILE_FLAG,-fno-stack-clash-protection),1)
+    override CFLAGS += \
+        -fno-stack-clash-protection
+endif
+
+ifeq ($(call CC_HAS_COMPILE_FLAG,-fcf-protection=none),1)
+    override CFLAGS += \
+        -fcf-protection=none
+endif
+
+# GCC needs this flag for interrupt handlers and Clang below 3.9 has no
+# name for it, where only a long double could reach the x87.
+ifeq ($(call CC_HAS_COMPILE_FLAG,-mno-80387),1)
+    override CFLAGS += \
+        -mno-80387
+endif
 
 # Some compilers link static PIEs even when asked for -static, so pass
 # them -no-pie when linking if they support it.
