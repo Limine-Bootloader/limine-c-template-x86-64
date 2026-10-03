@@ -199,6 +199,20 @@ ifneq ($(CC_LINK_ERROR),)
     $(call TOOLCHAIN_ERROR,The linker does not work with the given LDFLAGS: $(CC_LINK_ERROR))
 endif
 
+# Some drivers ignore -fuse-ld on some targets, so check that the banner
+# of the linker that runs names the one asked for, in any case.
+override CC_FUSE_LD := $(lastword $(filter -fuse-ld=%,$(CFLAGS) $(LDFLAGS)))
+ifneq ($(CC_FUSE_LD),)
+    override CC_FUSE_LD_NAME := $(firstword $(subst -, ,$(patsubst ld.%,%,$(notdir $(patsubst -fuse-ld=%,%,$(CC_FUSE_LD))))))
+    # GNU ld calls itself ld, not bfd.
+    override CC_LD_BANNER_NAME := $(patsubst bfd,ld,$(CC_FUSE_LD_NAME))
+    override CC_LD_VERSION := $(shell LC_ALL=C $(CC) $(CFLAGS) $(LDFLAGS) -Wl,--version 2>/dev/null | head -n 1)
+    override CC_RUNS_FUSE_LD := $(shell ! printf '%s\n' '$(subst ',,$(CC_LD_VERSION))' | grep -qiE '(^|[^[:alnum:]])$(CC_LD_BANNER_NAME)([^[:alnum:]]|$$)'; echo $$?)
+    ifneq ($(CC_RUNS_FUSE_LD),1)
+        $(call TOOLCHAIN_ERROR,The compiler ignores $(CC_FUSE_LD) and runs another linker: $(CC_LD_VERSION))
+    endif
+endif
+
 ifeq ($(call CC_HAS_COMPILE_FLAG,-fno-stack-clash-protection),1)
     override CFLAGS += \
         -fno-stack-clash-protection
