@@ -273,8 +273,8 @@ override CHANGED_VARSFILES := $(foreach f,$(VARSFILES),$(shell printf '%s\n' '$(
 FORCE:
 $(CHANGED_VARSFILES): FORCE
 $(VARSFILES):
-	mkdir -p "$(dir $@)"
-	printf '%s\n' '$(subst ','\'',$($(notdir $@)))' > $@
+	@mkdir -p "$(dir $@)"
+	@printf '%s\n' '$(subst ','\'',$($(notdir $@)))' > $@
 
 # Link rules for the final executable.
 bin/$(OUTPUT): GNUmakefile obj/CC obj/CFLAGS obj/LDFLAGS linker-scripts/x86_64.lds $(OBJ)
