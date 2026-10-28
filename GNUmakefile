@@ -6,11 +6,23 @@
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
 QEMUFLAGS := -m 2G
+QEMU_MACHINE := -M q35
+QEMU_CPU :=
+# Uncomment this line and comment out/remove the xHCI/USB keyboard/mouse
+# block below if the kernel does not support xHCI/USB and wants legacy
+# PS/2 keyboard and mouse instead.
+#QEMU_DEVICES :=
+QEMU_DEVICES := \
+    -device qemu-xhci \
+    -device usb-kbd \
+    -device usb-mouse
 
-# Internal QEMU flags that should not be changed by the user.
-override QEMU_MACHINE_FLAGS := \
-    -M q35
-override QEMU_UEFI_FLAGS := \
+override QEMUFLAGS := \
+    $(QEMU_MACHINE) \
+    $(QEMU_CPU) \
+    $(QEMU_DEVICES) \
+    $(QEMUFLAGS)
+override QEMU_UEFI_FW := \
     -drive if=pflash,unit=0,format=raw,file=edk2-ovmf-bins/ovmf-code-x86_64.fd,readonly=on
 
 override IMAGE_NAME := template
@@ -48,7 +60,6 @@ all-hdd: $(IMAGE_NAME).hdd
 .PHONY: run
 run: $(IMAGE_NAME).iso
 	qemu-system-x86_64 \
-		$(QEMU_MACHINE_FLAGS) \
 		-cdrom $(IMAGE_NAME).iso \
 		-boot d \
 		$(QEMUFLAGS)
@@ -56,26 +67,22 @@ run: $(IMAGE_NAME).iso
 .PHONY: run-uefi
 run-uefi: edk2-ovmf-bins $(IMAGE_NAME).iso
 	qemu-system-x86_64 \
-		$(QEMU_MACHINE_FLAGS) \
-		$(QEMU_UEFI_FLAGS) \
 		-cdrom $(IMAGE_NAME).iso \
-		-boot d \
-		$(QEMUFLAGS)
+		$(QEMUFLAGS) \
+		$(QEMU_UEFI_FW)
 
 .PHONY: run-hdd
 run-hdd: $(IMAGE_NAME).hdd
 	qemu-system-x86_64 \
-		$(QEMU_MACHINE_FLAGS) \
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-uefi
 run-hdd-uefi: edk2-ovmf-bins $(IMAGE_NAME).hdd
 	qemu-system-x86_64 \
-		$(QEMU_MACHINE_FLAGS) \
-		$(QEMU_UEFI_FLAGS) \
 		-hda $(IMAGE_NAME).hdd \
-		$(QEMUFLAGS)
+		$(QEMUFLAGS) \
+		$(QEMU_UEFI_FW)
 
 .INTERMEDIATE: edk2-ovmf-bins.tar.gz
 edk2-ovmf-bins.tar.gz:
