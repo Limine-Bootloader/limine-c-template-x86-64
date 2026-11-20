@@ -90,8 +90,12 @@ override CFLAGS += \
     -Wextra \
     -std=gnu11 \
     -ffreestanding \
+    -fno-builtin \
     -fno-exceptions \
+    -fno-asynchronous-unwind-tables \
+    -fno-unwind-tables \
     -fno-common \
+    -fno-strict-aliasing \
     -fno-stack-protector \
     -fno-stack-check \
     -fno-PIC \
